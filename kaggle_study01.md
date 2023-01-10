@@ -179,4 +179,140 @@ items["item_name"] = items["item_name"].apply(lambda x: name_correction(x))
 
 items.name2 = items.name2.apply( lambda x: x[:-1] if x !="0" else "0")
 ## name2가 "0"이 아닌 경우 마지막을 제외한 모든 문자 반환 
+
+
+
+items["type"] = items.name2.apply(lambda x: x[0:8] if x.split(" ")[0] == "xbox" else x.split(" ")[0] )
+items.loc[(items.type == "x360") | (items.type == "xbox360") | (items.type == "xbox 360") ,"type"] = "xbox 360"
+## xbox 360으로 통일시킴
+items.loc[ items.type == "", "type"] = "mac"
+## 빈공간 mac으로 채움
+items.type = items.type.apply( lambda x: x.replace(" ", "") )
+## 공백 제거해줌
+items.loc[ (items.type == 'pc' )| (items.type == 'pс') | (items.type == "pc"), "type" ] = "pc"
+## pc로 전체 통일
+items.loc[ items.type == 'рs3' , "type"] = "ps3"
+## ps3로 통일
+
+group_sum = items.groupby(["type"]).agg({"item_id": "count"})
+# groupby.agg -> 함수 여러개 사용하거나 할 떄 사용 이경우에는 타입에 따른 같은 제품의 개 수를 더한것
+group_sum = group_sum.reset_index()
+drop_cols = []
+for cat in group_sum.type.unique():
+    if group_sum.loc[(group_sum.type == cat), "item_id"].values[0] <40:
+        drop_cols.append(cat)
+# 제품 개수가 40개 이하인 것은 drop_cols에 저장
+items.name2 = items.name2.apply( lambda x: "other" if (x in drop_cols) else x )
+# 40개 이하인 것들은 other로 지정 이외에는 제품명 그대로 사용
+items = items.drop(["type"], axis = 1)
+# type 열은 지워줌
+
+
+
+items.name2 = LabelEncoder().fit_transform(items.name2)
+items.name3 = LabelEncoder().fit_transform(items.name3)
+
+items.drop(["item_name", "name1"],axis = 1, inplace= True)
+items.head()
+## 라벨 인코딩 후, 기존 제품명과 제품1을 삭제해줌 
 ```
+
+### 5.Preprocessing
+
+```python
+from itertools import product
+import time
+# - 월, 상점 및 품목의 모든 조합을 증가하는 월 순으로 행렬 df를 만듭니다. Item_cnt_day는 Item_cnt_month로 합계됩니다.
+ts = time.time()
+matrix = []
+cols  = ["date_block_num", "shop_id", "item_id"]
+for i in range(34):
+    sales = train[train.date_block_num == i]
+    # bull indexing
+    matrix.append( np.array(list( product( [i], sales.shop_id.unique(), sales.item_id.unique() ) ), dtype = np.int16) )
+    # 왜 이걸 만들었을까??
+
+matrix = pd.DataFrame( np.vstack(matrix), columns = cols )
+# vstack은 배열을 세로 결합하는 함수
+matrix["date_block_num"] = matrix["date_block_num"].astype(np.int8)
+# 매트릭스 date block num 속성을 정수로 변환해줌
+matrix["shop_id"] = matrix["shop_id"].astype(np.int8)
+matrix["item_id"] = matrix["item_id"].astype(np.int16)
+# 위와 마찬가지로 정수변환
+matrix.sort_values( cols, inplace = True )
+#오름차순으로 정렬해줌(위에서 정수로 타입 변경해준 컬럼들)
+time.time()- ts
+
+
+
+train["revenue"] = train["item_cnt_day"] * train["item_price"]
+# 수입 열을 따로 만들어줌 수입 = 제품 가격 x 제품 판매량
+ts = time.time()
+group = train.groupby( ["date_block_num", "shop_id", "item_id"] ).agg( {"item_cnt_day": ["sum"]} )
+# 월별,가게이름,제품명에 따른 판매량의 합계를 구해줌
+group.columns = ["item_cnt_month"]
+# 새로운 컬럼을 만들어준다.
+group.reset_index( inplace = True)
+matrix = pd.merge( matrix, group, on = cols, how = "left" )
+# https://wikidocs.net/153875 merge 함수 설명 
+# how: 병합시 기준이 될 인덱스를 정하는 방식
+# on: 열 기준 병합시 기준으로할 열의 이름이 양측이름이 다르면 어떤 열을 기준으로할지 정해준다.
+matrix["item_cnt_month"] = matrix["item_cnt_month"].fillna(0).astype(np.float16)
+# 매트릭스의 item_cnt_month의 결측치를 0으로 채워줌
+time.time() - ts
+
+
+# Create a test set for month 34.
+
+test["date_block_num"] = 34
+test["date_block_num"] = test["date_block_num"].astype(np.int8)
+test["shop_id"] = test.shop_id.astype(np.int8)
+test["item_id"] = test.item_id.astype(np.int16)
+## 테스트셋 정수타입으로 수정해주기.
+
+
+ts = time.time()
+
+matrix = pd.concat([matrix, test.drop(["ID"],axis = 1)], ignore_index=True, sort=False, keys=cols)
+matrix.fillna( 0, inplace = True )
+time.time() - ts
+## 테스트 셋과 matrix 합쳐주기
+
+
+ts = time.time()
+matrix = pd.merge( matrix, shops, on = ["shop_id"], how = "left" )
+matrix = pd.merge(matrix, items, on = ["item_id"], how = "left")
+matrix = pd.merge( matrix, cats, on = ["item_category_id"], how = "left" )
+matrix["shop_city"] = matrix["shop_city"].astype(np.int8)
+matrix["shop_category"] = matrix["shop_category"].astype(np.int8)
+matrix["item_category_id"] = matrix["item_category_id"].astype(np.int8)
+matrix["subtype_code"] = matrix["subtype_code"].astype(np.int8)
+matrix["name2"] = matrix["name2"].astype(np.int8)
+matrix["name3"] = matrix["name3"].astype(np.int16)
+matrix["type_code"] = matrix["type_code"].astype(np.int8)
+time.time() - ts
+
+## matrix로 결합시켜줌
+
+Feature engineering
+
+# Define a lag feature function
+def lag_feature( df,lags, cols ):
+    for col in cols:
+        print(col)
+        tmp = df[["date_block_num", "shop_id","item_id",col ]]
+        for i in lags:
+            shifted = tmp.copy()
+            shifted.columns = ["date_block_num", "shop_id", "item_id", col + "_lag_"+str(i)]
+            shifted.date_block_num = shifted.date_block_num + i
+            df = pd.merge(df, shifted, on=['date_block_num','shop_id','item_id'], how='left')
+    return df
+## lag feature를 추가해주는 함수를 선언해줌
+
+
+
+
+
+```
+
+
