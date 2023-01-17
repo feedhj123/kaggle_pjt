@@ -184,6 +184,48 @@ for key, value in trial.params.items():
     print(f'    {key}: {value}')
 ```
 
+### Light GBM parameters
+
+- 'boosting_type': 사용할 부스팅 알고리즘의 종류를 말한다. 대표적으로
+"gbdt"(Gradient Boosting Decision Tree)가 있고 "dart"(Dropouts meet Multiple Additive Regression Trees)가 있다. 그 외에...  rf,goss등등
+
+- 'num_leaves': 트리의 최대 가지수를 의미한다.
+
+- 'learning_rate': 학습률
+
+- 'min_child_weight': 새 분할 생성을 위해 하위 노드에 필요한 최소 샘플의 개수.
+
+- 'n_estimators' : LightGBM의 핵심 매개변수 중 하나로서, 모델의 트리수를 나타낸다. 트리가 많을수록 모델이 복잡해지고 train set에 과적합될 가능성이 있으나, 복잡한 패턴을 잡아내는 모델 기능은 향상될 수 있다.
+
+- 'feature_fraction' : LightGBM의 매개 변수로, 각 트리를 구성하는데 사용되는 피쳐의 부분을 나타낸다. feature의 수가 많은 경우 과적합을 제어하는데 좋다.
+feature_fraction이 1보다 작은 값으로 설정된 경우, 각 트리에서 사용할 feature의 하위 집합을 임의로 선택한다. ->> 이 경우, 모델이 단일 feature에 너무 많이 의존하지 않아서 과적합을 줄일 수 있다.(default=1)
+
+- 'bagging_fraction': LightGBM의 매개 변수로 각 트리에 사용할 데이터의 부분을 나타내며, 각 트리에 대한 데이터의 랜덤 하위 샘플링을 제어한다.
+feature_fraction과 마찬가지로 deafault값은 1이며, 이보다 작을 경우 트리에 사용할 데이터의 하위집합을 임의 설정하여 모델이 특정 데이터에 지나치게 의존하지 않도록 하여 과적합을 줄일 수 있다.
+
+- 'baggin_freq': bagging_fraction과 같이 동작하며, bagging이 수행될 이후 반복 횟수를 제어한다. 0이면 bagging이 비활성화되고, 0보다 크면 bagging freq를 반복할때 마다 bagging이 수행된다. (정수만 써야되는지 한번 확인해보자)
+
+- 'verbosity'는 LightGBM의 매개 변수로, 훈련 중 모델에 의해 생성된 출력 수준을 다음과 같이 제어한다.
+
+1. 0: 출력x
+2. 1: 작성된 트리수 및 현재 학습점수와 같은 학습 프로세스에 대한 메시지를 출력한다.
+3. 2: 메시지와 각 노드의 기능 중요도 및 분할값과 같은 트리에 대한 자세한 정보까지 출력한다.
+
+
+- 'lambda_l1','lambda_l2': 모델의 가중치에 적용되는 L1정규화(Lasso) 및 L2정규화(Ridge)의 양을 제어하는 매개변수이다. 매개 변수값이 클수록 정규화가 더 강하므로 과적합 문제를 핸들링 할 때, 값을 조절해가며 사용해 줄 수 있다.
+
+
+
+파라미터가 100개가 넘어가기때문에 이외에 더 자세한 정보는 아래를 참조하라고 하면 좋을듯 하다. 
+
+[참조1doc]('https://lightgbm.readthedocs.io/en/latest/Parameters.html')
+
+[참조2개요]('https://nicola-ml.tistory.com/51')
+
+
+
+
+
 ### 진행중인 pjt에 optuna 적용
 
 ```python
@@ -208,7 +250,7 @@ def objectiveLGBM(trial: Trial, X_train, y_train, X_valid, y_valid):
         'gpu_use_dp':True
     }
     #X_train, X_test, y_train, y_test = train_test_split(X, y.flatten(), test_size=0.1)
-        
+    #max_depth가 들어가면 결과는 더 좋아질 수 있을듯 하다.    
     model = LGBMRegressor(**param)
     lgbm_model = model.fit(X_train, y_train, verbose=False)
     
@@ -224,13 +266,29 @@ print('Best trial: score {},\nparams {}'.format(study.best_trial.value,study.bes
 best_param = study.best_trial.params
 ```
 
+
+
 ### 이후 더 진행될 시각화 과정
 ```python
 # optuna 시각화 
+optuna.visualization.plot_param_importances(study)
+optuna.visualization.plot_optimization_history(study)
+optuna.visualization.plot_parallel_coordinate(study)
+
+# 공통적인 오류 코드 
+# 아마도 plotly 5.12버전이 완전히 지워지지않은 상태에서 4.14버전을 깔아서그런거같습니다.
+# 오류 내용 확인결과 ndformat의 버전 문제라길래 최신으로 !pip install --upgrade ndformat으로 
+업그레이드 해봤으나 해결되지는않았습니다.
+ValueError: Mime type rendering requires nbformat>=4.2.0 but it is not installed
+
 optuna.visualization.plot_optimization_history(study)
 # 하이퍼 파라미터 최적화 과정 확인
 optuna.visualization.plot_param_importances(study)
 # 하이퍼 파라미터별 중요도 확인가능 
 optuna.visualization.plot_parallel_coordinate(study)
-# 하이퍼 파라미터간 관계 확인가능 하지만 이것까진 굳이 안해도될듯..?하다
+# 하이퍼 파라미터간 관계 확인가능 
 ```
+![최종스코어](./img/%EC%B5%9C%EC%A2%85%EA%B2%B0%EA%B3%BC%EA%B0%92.PNG.png)
+![optuna.importance](img/optuna.importance.PNG.png)
+![optuna.parallel](img/optuna.parallel.PNG.png)
+![optuna.history](img/optuna.history.PNG.png)
