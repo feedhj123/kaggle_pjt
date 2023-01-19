@@ -292,3 +292,76 @@ optuna.visualization.plot_parallel_coordinate(study)
 ![optuna.importance](img/optuna.importance.PNG.png)
 ![optuna.parallel](img/optuna.parallel.PNG.png)
 ![optuna.history](img/optuna.history.PNG.png)
+
+```python
+# optuna (n_trials=50 , max_depth추가)
+def objectiveLGBM(trial: Trial, X_train, y_train, X_valid, y_valid):
+    param = {
+        'objective': 'regression',
+        'metric': 'root_mean_squared_error',
+        'verbosity': -1,
+        'boosting_type': 'gbdt',
+        'lambda_l1': trial.suggest_loguniform('lambda_l1', 1e-7, 10.0),
+        'lambda_l2': trial.suggest_loguniform('lambda_l2', 1e-7, 10.0),
+        'num_leaves': trial.suggest_int('num_leaves', 2, 512),
+        'learning_rate': 0.01,
+        'n_estimators': trial.suggest_int('n_estimators', 700, 3000),
+        'feature_fraction': trial.suggest_uniform('feature_fraction', 0.4, 1.0),
+        'bagging_fraction': trial.suggest_uniform('bagging_fraction', 0.4, 1.0),
+        'bagging_freq': trial.suggest_int('bagging_freq', 1, 7),
+        'min_child_samples': trial.suggest_int('min_child_samples', 5, 100),
+        "max_depth": trial.suggest_int("max_depth", 1, 20)
+        #max_depth 추가함.
+    }
+    #X_train, X_test, y_train, y_test = train_test_split(X, y.flatten(), test_size=0.1)
+        
+    model = LGBMRegressor(**param)
+    lgbm_model = model.fit(X_train, y_train, verbose=False)
+    
+    score = mean_squared_error(lgbm_model.predict(X_valid), y_valid, squared=False)
+    return score
+```
+
+![30](img/캡처30.png)
+- depth를 파라미터에 추가하고 시도를 늘리면서 상당히 많은 시간이 소요된 모습이다
+
+![31](img/캡처31.png)
+- bestscore는 0.708로 근소하게 좋아진 모습을 확인할 수 있다.
+- best_parameters: 
+min child samples :24
+bagging_freq: 6 
+bagging_fraction:0.404452
+feature_fraction : 0.60325643
+n_estimators:2727
+num_leaves:239
+lambda_l2:4.02997299 e-05
+lambda_l1:3.8300964 e-07
+
+![32](img/캡처32.png)
+- 중요도는 depth가 1위 numleaves가 2위이고 나머지 파라미터의 영향은 미미했다.
+
+![33](img/캡처33.png)
+- 비교적 균일한 결과값 사이 조금씩 튀는 값이 눈에 띈다.
+(파라미터의 범위만 설정하고 이를 랜덤하게 실행하는 것이기 때문에 특정시도에서 모델에게 좋지않은 파라미터가 선택되어 결과값이 안좋게 나온것 같음)
+
+![34](img/캡처34.png)
+- 선의 색상이 진한 정도에 따라 파라미터의 중요도를 알 수 있고 상관관계와 파라미터간 조합에 대해 파악이 가능하다.
+
+### 앙상블 모델에서 파라미터의 중요도가 상대적으로 적게 나타나는 이유?
+
+- 개인적인 궁금함으로 인해 찾아본 결과이다.
+
+1. 우선, 앙상블 모델에서 종종 많은 수의 트리가 있는데
+이는 모델 전체 성능이 개별 트리 파라미터의 특정 값에
+상대적으로 덜 민감하다는 것을 의미한다.
+
+2. 앙상블 모델은 트리 기반 모델에서 조정해야하는
+일반적인 하이퍼파라미터인 학습률의 특정값에
+덜 민감한 경우가 많다.
+이는 앙상블 모델이 앙상블에 사용되는 트리수를
+조정하여 학습률을 자동으로 조정할 수 있기 때문이다.
+
+참고 레퍼런스
+- "The Elements of Statistical Learning: Data Mining, Inference, and Prediction" by Trevor Hastie, Robert Tibshirani and Jerome Friedman, 2017. 
+
+  
